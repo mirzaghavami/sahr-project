@@ -10,3 +10,4 @@ tiktoken
 numpy
 pandas
 openpyxl
+pysqlite3-binary
