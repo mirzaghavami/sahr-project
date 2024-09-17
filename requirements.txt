@@ -9,3 +9,4 @@ streamlit
 tiktoken
 numpy
 pandas
+openpyxl
