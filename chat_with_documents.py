@@ -66,9 +66,7 @@ def clear_history():
 
 
 def read_excel(uploaded_file):
-    # Define the columns to extract
     cols = ['Indicator_ID', 'Indicator', 'Description', 'Prompting', 'Prompting/Keyword', 'Keywords']
-    # Read only the specified columns and fill NaN values with the value from the cell above
     framework = pd.read_excel(uploaded_file, sheet_name='Prompting+scoring', usecols=cols).fillna(method='ffill')
     return framework
 
@@ -82,18 +80,12 @@ def ask_questions_from_excel(vector_store, questions, k=3, temperature=1):
 
 
 def export_to_excel(q_and_a, name):
-    print('clicked to export')
-    # Create a DataFrame from the list of questions and answers
     df = pd.DataFrame(q_and_a, columns=['Question', 'Answer'])
 
-    print('exported to dataframes')
-
-    # Ensure the 'results' directory exists
     results_dir = 'results'
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
 
-    # Save the DataFrame to an Excel file in the 'results' folder
     file_path = os.path.join(results_dir, f'{name}_exported_results.xlsx')
     df.to_excel(file_path, index=False)
 
@@ -107,47 +99,54 @@ if __name__ == "__main__":
     st.subheader('LLM Question-Answering Application')
 
     with st.sidebar:
-        api_key = st.text_input("OpenAI API Key: ", type='password')
-        if api_key:
-            os.environ['OPENAI_API_KEY'] = api_key
+        # Model selection combo box
+        model_option = st.selectbox("Select a model:", ["GPT-3.5", "Llama 3.2", "PaperQA"])
 
-        uploaded_file = st.file_uploader('Upload a file:', type=['pdf', 'docx', 'txt'], on_change=clear_history)
-        excel_file = st.file_uploader("Upload Excel (optional):", type=["xlsx"], on_change=clear_history)
-        chunk_size = st.number_input("Chunk size:", min_value=100, max_value=2200, value=512, on_change=clear_history)
-        chunk_overlap = st.number_input("Chunk overlap:", min_value=0, max_value=100, value=20, on_change=clear_history)
-        temperature = st.slider("Temperature:", value=1.0, min_value=0.0, max_value=1.0, step=0.01)
-        k = st.number_input('k', min_value=1, max_value=20, value=3, on_change=clear_history)
-        add_data = st.button('Add Data', on_click=clear_history)
+        # Conditional rendering based on selected model
+        if model_option == "GPT-3.5":
+            api_key = st.text_input("OpenAI API Key: ", type='password')
+            if api_key:
+                os.environ['OPENAI_API_KEY'] = api_key
 
-        if uploaded_file and add_data:
-            with st.spinner('Reading, chunking and embedding file ...'):
-                bytes_data = uploaded_file.read()
-                file_name = os.path.join('./uploaded_files', uploaded_file.name)
-                with open(file_name, 'wb') as f:
-                    f.write(bytes_data)
+            uploaded_file = st.file_uploader('Upload a file:', type=['pdf', 'docx', 'txt'], on_change=clear_history)
+            excel_file = st.file_uploader("Upload Excel (optional):", type=["xlsx"], on_change=clear_history)
+            chunk_size = st.number_input("Chunk size:", min_value=100, max_value=2200, value=512,
+                                         on_change=clear_history)
+            chunk_overlap = st.number_input("Chunk overlap:", min_value=0, max_value=100, value=20,
+                                            on_change=clear_history)
+            temperature = st.slider("Temperature:", value=1.0, min_value=0.0, max_value=1.0, step=0.01)
+            k = st.number_input('k', min_value=1, max_value=20, value=3, on_change=clear_history)
+            add_data = st.button('Add Data', on_click=clear_history)
 
-                data = load_document(file_name)
-                if data:
-                    chunks = chunk_data(data, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-                    st.write(f"Chunk size: {chunk_size}, Chunks: {len(chunks)}")
+            if uploaded_file and add_data:
+                with st.spinner('Reading, chunking and embedding file ...'):
+                    bytes_data = uploaded_file.read()
+                    file_name = os.path.join('./uploaded_files', uploaded_file.name)
+                    with open(file_name, 'wb') as f:
+                        f.write(bytes_data)
 
-                    tokens, embedding_cost = calculate_embedding_cost(chunks)
-                    st.write(f"Embedding cost: ${embedding_cost:.4f}")
+                    data = load_document(file_name)
+                    if data:
+                        chunks = chunk_data(data, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                        st.write(f"Chunk size: {chunk_size}, Chunks: {len(chunks)}")
 
-                    vector_store = create_embeddings(chunks)
+                        tokens, embedding_cost = calculate_embedding_cost(chunks)
+                        st.write(f"Embedding cost: ${embedding_cost:.4f}")
 
-                    st.session_state.vs = vector_store
-                    st.success('File uploaded, chunked and embedded successfully.')
+                        vector_store = create_embeddings(chunks)
+
+                        st.session_state.vs = vector_store
+                        st.success('File uploaded, chunked and embedded successfully.')
+        if model_option == 'Llama 3.2':
+            st.success("Sag Model")
 
     if 'vs' in st.session_state:
         vector_store = st.session_state.vs
 
-        print('check excel,sssss', excel_file)
         if excel_file:
             sheet = read_excel(excel_file)
             if not sheet.empty:
-                questions = sheet['Description'].tolist()  # Extract questions from 'Description' column
-                # Display each question from Excel in a cleaner, line-by-line format
+                questions = sheet['Description'].tolist()
                 st.write("Questions from Excel:")
                 for idx, question in enumerate(questions, 1):
                     st.write(f"{idx}. {question}")
@@ -167,11 +166,9 @@ if __name__ == "__main__":
     if q:
         if 'vs' in st.session_state:
             vector_store = st.session_state.vs
-            st.write(f'k : {k}')
             answer = open_ai_ask_and_get_answer(vector_store, q, k, temperature=temperature)
             st.text_area('LLM Answer:', value=answer)
 
-            st.divider()
             if 'history' not in st.session_state:
                 st.session_state.history = ''
             value = f'Q: {q} \nA: {answer}'
