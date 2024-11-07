@@ -40,16 +40,32 @@ def create_embeddings(chunks):
     return vector_store
 
 
-def open_ai_ask_and_get_answer(vector_store, q, k=3, temperature=1):
-    from langchain.chains import RetrievalQA
+def open_ai_ask_and_get_answer(vector_store, q, k=3, temperature=1, system_prompt=""):
     from langchain.chat_models import ChatOpenAI
+    from langchain.chains.combine_documents import create_stuff_documents_chain
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain.chains import create_retrieval_chain
+
+    _system_prompt = (
+            system_prompt +
+            " Context: {context}"
+    )
+
+    print('Ssss',_system_prompt)
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", _system_prompt),
+            ("human", "{input}"),
+        ]
+    )
     llm = ChatOpenAI(model='gpt-3.5-turbo', temperature=temperature)
 
     retriever = vector_store.as_retriever(search_type='similarity', search_kwargs={'k': k})
+    question_answer_chain = create_stuff_documents_chain(llm, prompt)
+    chain = create_retrieval_chain(retriever, question_answer_chain)
 
-    chain = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever)
-
-    answer = chain.invoke(q)
+    answer = chain.invoke({"input": q})
     return answer
 
 
@@ -71,10 +87,12 @@ def read_excel(uploaded_file):
     return framework
 
 
-def ask_questions_from_excel(vector_store, questions, k=3, temperature=1):
+def ask_questions_from_excel(vector_store, questions, k=3, temperature=1, system_prompt=""):
+    print("SSSSSSSSS,", system_prompt)
     q_and_a = []
     for question in questions:
-        answer = open_ai_ask_and_get_answer(vector_store, question, k, temperature=temperature)
+        answer = open_ai_ask_and_get_answer(vector_store, question, k, temperature=temperature,
+                                            system_prompt=system_prompt)
         q_and_a.append((question, answer))
     return q_and_a
 
@@ -108,6 +126,11 @@ if __name__ == "__main__":
             if api_key:
                 os.environ['OPENAI_API_KEY'] = api_key
 
+            system_prompt = st.text_area("Enter the system prompt:", value=""
+                                                                           "Use the given context to answer the question. "
+                                                                           "If you don't know the answer, say you don't know. "
+                                                                           "Use three sentence maximum and keep the answer concise. "
+                                                                           "")
             uploaded_file = st.file_uploader('Upload a file:', type=['pdf', 'docx', 'txt'], on_change=clear_history)
             excel_file = st.file_uploader("Upload Excel (optional):", type=["xlsx"], on_change=clear_history)
             chunk_size = st.number_input("Chunk size:", min_value=100, max_value=2200, value=512,
@@ -153,7 +176,8 @@ if __name__ == "__main__":
 
                 if st.button("Ask Questions from Excel"):
                     with st.spinner('Asking questions...'):
-                        q_and_a = ask_questions_from_excel(vector_store, questions, k=k, temperature=temperature)
+                        q_and_a = ask_questions_from_excel(vector_store, questions, k=k, temperature=temperature,
+                                                           system_prompt=system_prompt)
                         for question, answer in q_and_a:
                             st.write(f"**Q**: {question}")
                             st.write(f"**A**: {answer['result']}")
@@ -166,7 +190,8 @@ if __name__ == "__main__":
     if q:
         if 'vs' in st.session_state:
             vector_store = st.session_state.vs
-            answer = open_ai_ask_and_get_answer(vector_store, q, k, temperature=temperature)
+            answer = open_ai_ask_and_get_answer(vector_store, q, k, temperature=temperature,
+                                                system_prompt=system_prompt)
             st.text_area('LLM Answer:', value=answer)
 
             if 'history' not in st.session_state:
