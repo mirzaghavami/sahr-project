@@ -51,7 +51,7 @@ def open_ai_ask_and_get_answer(vector_store, q, k=3, temperature=1, system_promp
             " Context: {context}"
     )
 
-    print('Ssss',_system_prompt)
+    print('Ssss', _system_prompt)
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -131,7 +131,9 @@ if __name__ == "__main__":
                                                                            "If you don't know the answer, say you don't know. "
                                                                            "Use three sentence maximum and keep the answer concise. "
                                                                            "")
-            uploaded_file = st.file_uploader('Upload a file:', type=['pdf', 'docx', 'txt'], on_change=clear_history)
+            uploaded_files = st.file_uploader('Upload files:', type=['pdf', 'docx', 'txt'], accept_multiple_files=True,
+                                              on_change=clear_history)
+
             excel_file = st.file_uploader("Upload Excel (optional):", type=["xlsx"], on_change=clear_history)
             chunk_size = st.number_input("Chunk size:", min_value=100, max_value=2200, value=512,
                                          on_change=clear_history)
@@ -141,50 +143,44 @@ if __name__ == "__main__":
             k = st.number_input('k', min_value=1, max_value=20, value=3, on_change=clear_history)
             add_data = st.button('Add Data', on_click=clear_history)
 
-            if uploaded_file and add_data:
-                with st.spinner('Reading, chunking and embedding file ...'):
-                    bytes_data = uploaded_file.read()
-                    file_name = os.path.join('./uploaded_files', uploaded_file.name)
-                    with open(file_name, 'wb') as f:
-                        f.write(bytes_data)
+            if uploaded_files and add_data:
+                for uploaded_file in uploaded_files:
+                    with st.spinner(f'Reading, chunking, and embedding file {uploaded_file.name}...'):
+                        bytes_data = uploaded_file.read()
+                        file_path = os.path.join('./uploaded_files', uploaded_file.name)
+                        with open(file_path, 'wb') as f:
+                            f.write(bytes_data)
 
-                    data = load_document(file_name)
-                    if data:
-                        chunks = chunk_data(data, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-                        st.write(f"Chunk size: {chunk_size}, Chunks: {len(chunks)}")
+                        data = load_document(file_path)
+                        if data:
+                            chunks = chunk_data(data, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                            tokens, embedding_cost = calculate_embedding_cost(chunks)
+                            st.write(f"Embedding cost for {uploaded_file.name}: ${embedding_cost:.4f}")
 
-                        tokens, embedding_cost = calculate_embedding_cost(chunks)
-                        st.write(f"Embedding cost: ${embedding_cost:.4f}")
-
-                        vector_store = create_embeddings(chunks)
-
-                        st.session_state.vs = vector_store
-                        st.success('File uploaded, chunked and embedded successfully.')
+                            vector_store = create_embeddings(chunks)
+                            st.session_state[f'vs_{uploaded_file.name}'] = vector_store
+                            st.success(f'File {uploaded_file.name} uploaded, chunked, and embedded successfully.')
         if model_option == 'Llama 3.2':
             st.success("Sag Model")
 
-    if 'vs' in st.session_state:
-        vector_store = st.session_state.vs
+    if excel_file:
+        sheet = read_excel(excel_file)
+        if not sheet.empty:
+            questions = sheet['Description'].tolist()
+            st.write("Questions from Excel:")
+            for idx, question in enumerate(questions, 1):
+                st.write(f"{idx}. {question}")
 
-        if excel_file:
-            sheet = read_excel(excel_file)
-            if not sheet.empty:
-                questions = sheet['Description'].tolist()
-                st.write("Questions from Excel:")
-                for idx, question in enumerate(questions, 1):
-                    st.write(f"{idx}. {question}")
-
-                if st.button("Ask Questions from Excel"):
-                    with st.spinner('Asking questions...'):
-                        q_and_a = ask_questions_from_excel(vector_store, questions, k=k, temperature=temperature,
-                                                           system_prompt=system_prompt)
-                        for question, answer in q_and_a:
-                            st.write(f"**Q**: {question}")
-                            st.write(f"**A**: {answer['result']}")
-                            st.divider()
-                    path_of_export = export_to_excel(q_and_a, uploaded_file.name)
-                    st.success(f'Results successfully exported to: {path_of_export}')
-
+            if st.button("Ask Questions from Excel", disabled=not bool(excel_file)):
+                for uploaded_file in uploaded_files:
+                    file_name = uploaded_file.name
+                    vector_store = st.session_state.get(f'vs_{file_name}')
+                    if vector_store:
+                        with st.spinner(f'Asking questions for {file_name}...'):
+                            q_and_a = ask_questions_from_excel(vector_store, questions, k=k, temperature=temperature,
+                                                               system_prompt=system_prompt)
+                            path_of_export = export_to_excel(q_and_a, file_name)
+                            st.success(f'Results for {file_name} successfully exported to: {path_of_export}')
     q = st.text_input("Ask a question about the content of your file:")
 
     if q:
