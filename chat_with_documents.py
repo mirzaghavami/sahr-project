@@ -6,7 +6,7 @@ import streamlit as st
 from dotenv import load_dotenv, find_dotenv
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
-from streamlit_option_menu import option_menu
+from st_keyup import st_keyup
 
 DB_FAISS_PATH = 'vectorestore/faiss'
 
@@ -110,8 +110,7 @@ def open_ai_ask_and_get_answer(vector_store, q, k=3, temperature=1, system_promp
 
 load_dotenv(find_dotenv(), override=True)
 
-with st.sidebar:
-    choice = option_menu('Navigation', ['Vector RAG', 'Graph RAG', 'Self-Reflective RAG'])
+choice = 'Vector RAG'
 
 if choice == 'Vector RAG':
     # State to track app progress
@@ -179,10 +178,10 @@ if choice == 'Vector RAG':
 
         st.title("Step 3: Configure and Process Files")
 
-        model_option = st.selectbox("Select a model:", ["GPT-3.5", "Llama 3.2", "PaperQA"])
-
+        model_option = st.selectbox("Select a model:", ["GPT-3.5", "Gemini", "PaperQA"])
+        st.session_state['model'] = model_option
         if model_option == "GPT-3.5":
-            api_key = st.text_input("OpenAI API Key: ", type='password')
+            api_key = st_keyup("OpenAI API Key: ", key='311', debounce=500)
             if api_key:
                 os.environ['OPENAI_API_KEY'] = api_key
 
@@ -197,11 +196,28 @@ if choice == 'Vector RAG':
             temperature = st.slider("Temperature:", value=1.0, min_value=0.0, max_value=1.0, step=0.01)
             k = st.number_input('k', min_value=1, max_value=20, value=3, on_change=clear_history)
 
+        if model_option == 'Gemini':
+            api_key = st_keyup("GOOGLE_API_KEY : ", key='212121', debounce=500)
+
+            if api_key:
+                os.environ['GOOGLE_API_KEY'] = api_key
+
+            system_prompt = st.text_area("Enter the system prompt:",
+                                         help="A system prompt is a pre-written text prompt used to guide users through a conversation with an AI system. It sets the context, tone, and boundaries for the AI's responses, and is an essential part of building conversational AI systems123. The system prompt acts as a guiding framework, shaping the behavior and style of the AI throughout the interaction",
+                                         height=110,
+                                         value="""Use the given context to answer the question.If you don't know the answer, say you don't know.Use three sentence maximum and keep the answer concise.\n always start your answer with the name of company and then the rest.""")
+            chunk_size = st.number_input("Chunk size:", min_value=100, max_value=2200, value=512,
+                                         on_change=clear_history)
+            chunk_overlap = st.number_input("Chunk overlap:", min_value=0, max_value=100, value=20,
+                                            on_change=clear_history)
+            temperature = st.slider("Temperature:", value=1.0, min_value=0.0, max_value=1.0, step=0.01)
+            k = st.number_input('k', min_value=1, max_value=20, value=3, on_change=clear_history)
+
         # Process button
-        col1, col2 = st.columns([4, 4])
+        col1, col2 = st.columns([10.3, 1.7])
 
         with col1:
-            process_button = st.button("Process Files")
+            process_button = st.button("Process Files", disabled=not api_key)
         with col2:
             next_button = st.button("Next Step",
                                     disabled="completed" not in st.session_state or not st.session_state["completed"])
@@ -277,8 +293,8 @@ if choice == 'Vector RAG':
 
             st.write("Questions extracted from the Excel file:")
 
-            for idx, question in enumerate(questions[:10], 1):  # Show a preview of the first 10 questions
-                st.write(f"{idx}. {question}")
+            # for idx, question in enumerate(questions[:10], 1):  # Show a preview of the first 10 questions
+            #     st.write(f"{idx}. {question}")
             if st.button("Answer Questions"):
                 results = []
                 with st.spinner("Answering questions..."):

@@ -13,3 +13,4 @@ openpyxl
 pysqlite3-binary
 streamlit-option-menu
 faiss-cpu
+streamlit-keyup
