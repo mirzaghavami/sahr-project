@@ -335,3 +335,11 @@ if choice == 'Vector RAG':
                         os.makedirs("results")
                     results_df.to_excel(results_file, index=False)
                     st.success(f"Results exported successfully to {results_file}!")
+                if os.path.exists("results/results_file.xlsx"):
+                    with open("results/results_file.xlsx", "rb") as file:
+                        st.download_button(
+                            label="Download the results file",
+                            data=file,
+                            file_name="results_file.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
