@@ -137,7 +137,7 @@ if choice == 'Vector RAG':
                          disabled=len(uploaded_files) == 0 and len(uploaded_file_paths) == len(uploaded_files)):
                 st.session_state["uploaded_files"] = uploaded_files
                 st.session_state["step"] = 2
-                st.experimental_rerun()
+                st.rerun()
     elif st.session_state["step"] == 2:
         st.title("Step 2: Upload Excel File")
 
@@ -171,7 +171,7 @@ if choice == 'Vector RAG':
         with col2:
             if st.button("Proceed to Next Step", disabled=not bool(excel_file)):
                 st.session_state["step"] = 3
-                st.experimental_rerun()
+                st.rerun()
 
 
     elif st.session_state["step"] == 3:
@@ -250,7 +250,7 @@ if choice == 'Vector RAG':
                 st.success("Files processed successfully!")
 
                 st.session_state["completed"] = True
-                st.experimental_rerun()
+                st.rerun()
 
         if "processed_files" in st.session_state:
 
@@ -262,7 +262,7 @@ if choice == 'Vector RAG':
 
         if next_button:
             st.session_state["step"] = 4
-            st.experimental_rerun()
+            st.rerun()
 
     if st.session_state["step"] == 4:
         st.title("Step 4: Answer Questions and Export Results")
