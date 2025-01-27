@@ -53,13 +53,6 @@ def clear_history():
         del st.session_state['history']
 
 
-def add_delay_if_needed(model, request_count, delay=60, max_requests=12):
-    """Adds a delay if the model is 'Gemini' and max_requests are reached."""
-    if model == "Gemini" and request_count > 0 and request_count % max_requests == 0:
-        st.info(f"Reached {max_requests} requests. Waiting for {delay} seconds to avoid rate limits.")
-        time.sleep(delay)
-
-
 # Helper function to save uploaded files
 def save_uploaded_files(uploaded_files, upload_dir="./uploaded_files"):
     if not os.path.exists(upload_dir):
@@ -89,7 +82,6 @@ def create_embeddings_open_ai_embeddings(chunks):
 
 
 def create_embeddings_google_ai_embeddings(chunks):
-
     from langchain_google_genai import GoogleGenerativeAIEmbeddings
     try:
         embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
@@ -250,7 +242,7 @@ if choice == 'Vector RAG':
 
         st.title("Step 3: Configure and Process Files")
 
-        model_option = st.selectbox("Select a model:", ["GPT-4O", "Gemini", "PaperQA"])
+        model_option = st.selectbox("Select a model:", ["GPT-4O", "gemini-1.5-flash-8b", "PaperQA"])
         st.session_state['model'] = model_option
         if model_option == "GPT-4O":
             api_key = st_keyup("OpenAI API Key: ", key='311', debounce=500)
@@ -268,7 +260,7 @@ if choice == 'Vector RAG':
             temperature = st.slider("Temperature:", value=1.0, min_value=0.0, max_value=1.0, step=0.01)
             k = st.number_input('k', min_value=1, max_value=20, value=3, on_change=clear_history)
 
-        if model_option == 'Gemini':
+        if model_option == 'gemini-1.5-flash-8b':
             api_key = st_keyup("GOOGLE_API_KEY : ", key='212121', debounce=500)
 
             if api_key:
@@ -368,7 +360,7 @@ if choice == 'Vector RAG':
             for processed_file in processed_files:
                 if processed_file["name"] not in vector_store_map:
                     chunks = processed_file["chunks"]
-                    if (st.session_state['model'] == "Gemini"):
+                    if (st.session_state['model'] == "gemini-1.5-flash-8b"):
                         vector_store = create_embeddings_google_ai_embeddings(chunks)
                     else:
                         vector_store = create_embeddings_open_ai_embeddings(chunks)
@@ -384,7 +376,7 @@ if choice == 'Vector RAG':
             #     st.write(f"{idx}. {question}")
             if st.button("Answer Questions"):
                 results = []
-                gemini_call_count = 0  # Counter for Gemini model calls
+                gemini_call_count = 0  # Counter for gemini-1.5-flash-8b model calls
                 with st.spinner("Answering questions..."):
                     for i, question in enumerate(questions):
                         answers = []
@@ -402,7 +394,7 @@ if choice == 'Vector RAG':
 
                                     )
                                     answers.append((file_name, answer))
-                                elif (st.session_state['model'] == "Gemini"):
+                                elif (st.session_state['model'] == "gemini-1.5-flash-8b"):
 
                                     answer = ask_gemini_and_get_answer(
                                         vector_store,
@@ -415,9 +407,9 @@ if choice == 'Vector RAG':
                                     answers.append((file_name, answer))
                                     gemini_call_count += 1
 
-                                    # Introduce delay after every 10 Gemini calls
+                                    # Introduce delay after every 10 gemini-1.5-flash-8b calls
                                     if gemini_call_count % 10 == 0:
-                                        st.write("Quota limit reached for Gemini, waiting for 1 minute...")
+                                        st.write("Quota limit reached for gemini-1.5-flash-8b, waiting for 1 minute...")
                                         time.sleep(60)
 
                             except Exception as e:
