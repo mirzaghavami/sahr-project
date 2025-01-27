@@ -1,5 +1,6 @@
 import os
 import pprint
+import time
 
 import pandas as pd
 import streamlit as st
@@ -13,12 +14,14 @@ DB_FAISS_PATH = 'vectorestore/faiss'
 
 def calculate_embedding_cost(texts):
     import tiktoken
-    enc = tiktoken.encoding_for_model('text-embedding-ada-002')
+    enc = tiktoken.encoding_for_model('text-embedding-3-large')
     total_tokens = sum([len(enc.encode(page.page_content)) for page in texts])
-    return total_tokens, total_tokens / 1000 * 0.0004
+    cost_per_1k_tokens = 0.00013  # Updated cost for text-embedding-3-large
+    return total_tokens, total_tokens / 1000 * cost_per_1k_tokens
 
 
-def chunk_data(data, chunk_size=256, chunk_overlap=20):
+def chunk_data(data, chunk_size, chunk_overlap):
+    print(f'Chunk size: {chunk_size} and Chunk Overlap : {chunk_overlap}')
     from langchain.text_splitter import RecursiveCharacterTextSplitter
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     chunks = text_splitter.split_documents(data)
@@ -50,6 +53,13 @@ def clear_history():
         del st.session_state['history']
 
 
+def add_delay_if_needed(model, request_count, delay=60, max_requests=12):
+    """Adds a delay if the model is 'Gemini' and max_requests are reached."""
+    if model == "Gemini" and request_count > 0 and request_count % max_requests == 0:
+        st.info(f"Reached {max_requests} requests. Waiting for {delay} seconds to avoid rate limits.")
+        time.sleep(delay)
+
+
 # Helper function to save uploaded files
 def save_uploaded_files(uploaded_files, upload_dir="./uploaded_files"):
     if not os.path.exists(upload_dir):
@@ -71,14 +81,28 @@ def read_excel(uploaded_file):
     return framework
 
 
-def create_embeddings(chunks):
-    embeddings = OpenAIEmbeddings()
+def create_embeddings_open_ai_embeddings(chunks):
+    embeddings = OpenAIEmbeddings(model='text-embedding-3-large')
     db = FAISS.from_documents(chunks, embeddings)
     db.save_local(DB_FAISS_PATH)
     return db
 
 
+def create_embeddings_google_ai_embeddings(chunks):
+
+    from langchain_google_genai import GoogleGenerativeAIEmbeddings
+    try:
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+        db = FAISS.from_documents(chunks, embeddings)
+        db.save_local(DB_FAISS_PATH)
+        return db
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+
+
 def open_ai_ask_and_get_answer(vector_store, q, k=3, temperature=1, system_prompt=""):
+    print("Model is GPT")
     print('k ', k)
     print('temperature: ', temperature)
     print('system_prompt: ', system_prompt)
@@ -98,7 +122,55 @@ def open_ai_ask_and_get_answer(vector_store, q, k=3, temperature=1, system_promp
             ("human", "{input}"),
         ]
     )
-    llm = ChatOpenAI(model='gpt-3.5-turbo', temperature=temperature)
+    llm = ChatOpenAI(model='gpt-4o', temperature=temperature)
+
+    retriever = vector_store.as_retriever(search_type='similarity', search_kwargs={'k': k})
+    question_answer_chain = create_stuff_documents_chain(llm, prompt)
+    chain = create_retrieval_chain(retriever, question_answer_chain)
+
+    answer = chain.invoke({"input": q})
+    return answer
+
+
+def ask_gemini_and_get_answer(vector_store, q, k=3, temperature=1, system_prompt=""):
+    """
+    Asks Gemini a question using a provided vector store and returns the answer.
+
+    Args:
+        vector_store: The vector store to retrieve context from.
+        q: The question to ask.
+        k: The number of nearest neighbors to retrieve from the vector store.
+        temperature: The temperature for the Gemini model.
+        system_prompt: An optional system prompt to provide context to Gemini.
+
+    Returns:
+        The answer from Gemini.
+    """
+
+    print('Model is Gemini')
+    print('k ', k)
+    print('temperature: ', temperature)
+    print('system_prompt: ', system_prompt)
+
+    from langchain_google_genai import ChatGoogleGenerativeAI  # Import for Gemini
+    from langchain.chains.combine_documents import create_stuff_documents_chain
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain.chains import create_retrieval_chain
+
+    _system_prompt = (
+            system_prompt +
+            " Context: {context}"
+    )
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", _system_prompt),
+            ("human", "{input}"),
+        ]
+    )
+
+    # Use ChatGoogleGenerativeAI for Gemini. Specify model name if needed ('gemini-pro')
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-8b", temperature=temperature)
 
     retriever = vector_store.as_retriever(search_type='similarity', search_kwargs={'k': k})
     question_answer_chain = create_stuff_documents_chain(llm, prompt)
@@ -178,9 +250,9 @@ if choice == 'Vector RAG':
 
         st.title("Step 3: Configure and Process Files")
 
-        model_option = st.selectbox("Select a model:", ["GPT-3.5", "Gemini", "PaperQA"])
+        model_option = st.selectbox("Select a model:", ["GPT-4O", "Gemini", "PaperQA"])
         st.session_state['model'] = model_option
-        if model_option == "GPT-3.5":
+        if model_option == "GPT-4O":
             api_key = st_keyup("OpenAI API Key: ", key='311', debounce=500)
             if api_key:
                 os.environ['OPENAI_API_KEY'] = api_key
@@ -239,13 +311,20 @@ if choice == 'Vector RAG':
 
                             tokens, embedding_cost = calculate_embedding_cost(chunks)
 
-                            st.session_state["processed_files"].append({
-                                "name": uploaded_file.name,
-                                "chunks": chunks,
-                                "tokens": tokens,
-                                "embedding_cost": embedding_cost
+                            if st.session_state['model'] == "GPT-4O":
+                                st.session_state["processed_files"].append({
+                                    "name": uploaded_file.name,
+                                    "chunks": chunks,
+                                    "tokens": tokens,
+                                    "embedding_cost": embedding_cost
 
-                            })
+                                })
+                            else:
+                                st.session_state["processed_files"].append({
+                                    "name": uploaded_file.name,
+                                    "chunks": chunks
+
+                                })
 
                 st.success("Files processed successfully!")
 
@@ -253,12 +332,15 @@ if choice == 'Vector RAG':
                 st.rerun()
 
         if "processed_files" in st.session_state:
-
             st.write("Processed Files:")
 
             for processed_file in st.session_state["processed_files"]:
-                st.write(
-                    f"File: {processed_file['name']}, Tokens: {processed_file['tokens']}, Cost: ${processed_file['embedding_cost']:.4f}")
+                if st.session_state['model'] == "GPT-4O":
+                    st.write(
+                        f"File: {processed_file['name']}, Tokens: {processed_file['tokens']}, Cost: ${processed_file['embedding_cost']:.4f}")
+                else:
+                    st.write(
+                        f"File: {processed_file['name']}")
 
         if next_button:
             st.session_state["step"] = 4
@@ -286,10 +368,15 @@ if choice == 'Vector RAG':
             for processed_file in processed_files:
                 if processed_file["name"] not in vector_store_map:
                     chunks = processed_file["chunks"]
-                    vector_store = create_embeddings(chunks)
+                    if (st.session_state['model'] == "Gemini"):
+                        vector_store = create_embeddings_google_ai_embeddings(chunks)
+                    else:
+                        vector_store = create_embeddings_open_ai_embeddings(chunks)
                     vector_store_map[processed_file["name"]] = vector_store
 
             # Answer questions
+
+            # st.write(f"Cost :  {(len(questions) * len(vector_store_map.items()))}")
 
             st.write("Questions extracted from the Excel file:")
 
@@ -297,26 +384,48 @@ if choice == 'Vector RAG':
             #     st.write(f"{idx}. {question}")
             if st.button("Answer Questions"):
                 results = []
+                gemini_call_count = 0  # Counter for Gemini model calls
                 with st.spinner("Answering questions..."):
-                    for question in questions:
+                    for i, question in enumerate(questions):
                         answers = []
+
+                        st.write(f"Processing question {i + 1} of {len(questions)}: {question}")
                         for file_name, vector_store in vector_store_map.items():
                             try:
-                                answer = open_ai_ask_and_get_answer(
-                                    vector_store,
-                                    question,
-                                    k=st.session_state.k,
-                                    temperature=st.session_state.temperature,
-                                    system_prompt=st.session_state.system_prompt
+                                if (st.session_state['model'] == "GPT-4O"):
+                                    answer = open_ai_ask_and_get_answer(
+                                        vector_store,
+                                        question,
+                                        k=st.session_state.k,
+                                        temperature=st.session_state.temperature,
+                                        system_prompt=st.session_state.system_prompt
 
-                                )
-                                answers.append((file_name, answer))
+                                    )
+                                    answers.append((file_name, answer))
+                                elif (st.session_state['model'] == "Gemini"):
+
+                                    answer = ask_gemini_and_get_answer(
+                                        vector_store,
+                                        question,
+                                        k=st.session_state.k,
+                                        temperature=st.session_state.temperature,
+                                        system_prompt=st.session_state.system_prompt
+
+                                    )
+                                    answers.append((file_name, answer))
+                                    gemini_call_count += 1
+
+                                    # Introduce delay after every 10 Gemini calls
+                                    if gemini_call_count % 10 == 0:
+                                        st.write("Quota limit reached for Gemini, waiting for 1 minute...")
+                                        time.sleep(60)
 
                             except Exception as e:
                                 st.error(f"Error answering question: {question}. Error: {e}")
                                 answers.append((file_name, "Error generating answer"))
                         results.append((question, answers))
-                st.session_state["results"] = results
+                        st.write(f"Completed question {i + 1}/{len(questions)}")
+                    st.session_state["results"] = results
                 st.success("Questions answered successfully!")
 
             # Export results to Excel

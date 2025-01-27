@@ -2,7 +2,6 @@ openai
 langchain
 langchain_openai
 langchain-community
-chromadb
 docx2txt
 pypdf
 streamlit
@@ -10,7 +9,9 @@ tiktoken
 numpy
 pandas
 openpyxl
-pysqlite3-binary
 streamlit-option-menu
 faiss-cpu
 streamlit-keyup
+langchain_google_genai
+langchain_google_vertexai
+google-cloud
