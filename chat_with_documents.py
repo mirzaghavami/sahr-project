@@ -407,10 +407,10 @@ if choice == 'Vector RAG':
                                     answers.append((file_name, answer))
                                     gemini_call_count += 1
 
-                                    # Introduce delay after every 10 gemini-1.5-flash-8b calls
-                                    if gemini_call_count % 10 == 0:
-                                        st.write("Quota limit reached for gemini-1.5-flash-8b, waiting for 1 minute...")
-                                        time.sleep(60)
+                                    # Introduce delay after every 5 gemini-1.5-flash-8b calls
+                                    if gemini_call_count % 5 == 0:
+                                        st.write("Quota limit reached for gemini-1.5-flash-8b, waiting for 25 seconds...")
+                                        time.sleep(25)
 
                             except Exception as e:
                                 st.error(f"Error answering question: {question}. Error: {e}")
