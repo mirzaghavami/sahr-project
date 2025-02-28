@@ -13,5 +13,3 @@ streamlit-option-menu
 faiss-cpu
 streamlit-keyup
 langchain_google_genai
-langchain_google_vertexai
-google-cloud

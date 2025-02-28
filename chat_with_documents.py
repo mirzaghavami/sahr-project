@@ -168,8 +168,31 @@ def ask_gemini_and_get_answer(vector_store, q, k=3, temperature=1, system_prompt
     question_answer_chain = create_stuff_documents_chain(llm, prompt)
     chain = create_retrieval_chain(retriever, question_answer_chain)
 
-    answer = chain.invoke({"input": q})
-    return answer
+    try:
+        answer = chain.invoke({"input": q})
+        return answer
+    except Exception:
+        return None
+
+
+def retry_gemini_call(vector_store, question, k, temperature, system_prompt, max_retries=10, base_delay=10):
+    retries = 0
+    while retries < max_retries:
+        answer = ask_gemini_and_get_answer(
+            vector_store,
+            question,
+            k=k,
+            temperature=temperature,
+            system_prompt=system_prompt
+        )
+        print(f'answer is *********** {answer}')
+        if answer is not None:
+            return answer
+        retries += 1
+        wait_time = base_delay * (2 ** (retries - 1))  # Exponential backoff
+        st.write(f"Retrying Gemini call ({retries}/{max_retries}) in {wait_time} seconds...")
+        time.sleep(wait_time)
+    return "Error generating answer after multiple attempts"
 
 
 load_dotenv(find_dotenv(), override=True)
@@ -376,42 +399,29 @@ if choice == 'Vector RAG':
             #     st.write(f"{idx}. {question}")
             if st.button("Answer Questions"):
                 results = []
-                gemini_call_count = 0  # Counter for gemini-1.5-flash-8b model calls
                 with st.spinner("Answering questions..."):
                     for i, question in enumerate(questions):
                         answers = []
-
                         st.write(f"Processing question {i + 1} of {len(questions)}: {question}")
                         for file_name, vector_store in vector_store_map.items():
                             try:
-                                if (st.session_state['model'] == "GPT-4O"):
+                                if st.session_state['model'] == "GPT-4O":
                                     answer = open_ai_ask_and_get_answer(
                                         vector_store,
                                         question,
                                         k=st.session_state.k,
                                         temperature=st.session_state.temperature,
                                         system_prompt=st.session_state.system_prompt
-
                                     )
-                                    answers.append((file_name, answer))
-                                elif (st.session_state['model'] == "gemini-1.5-flash-8b"):
-
-                                    answer = ask_gemini_and_get_answer(
+                                elif st.session_state['model'] == "gemini-1.5-flash-8b":
+                                    answer = retry_gemini_call(
                                         vector_store,
                                         question,
                                         k=st.session_state.k,
                                         temperature=st.session_state.temperature,
                                         system_prompt=st.session_state.system_prompt
-
                                     )
                                     answers.append((file_name, answer))
-                                    gemini_call_count += 1
-
-                                    # Introduce delay after every 5 gemini-1.5-flash-8b calls
-                                    if gemini_call_count % 5 == 0:
-                                        st.write("Quota limit reached for gemini-1.5-flash-8b, waiting for 25 seconds...")
-                                        time.sleep(25)
-
                             except Exception as e:
                                 st.error(f"Error answering question: {question}. Error: {e}")
                                 answers.append((file_name, "Error generating answer"))
