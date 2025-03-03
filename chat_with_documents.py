@@ -93,7 +93,7 @@ def create_embeddings_google_ai_embeddings(chunks):
         return None
 
 
-def open_ai_ask_and_get_answer(vector_store, q, k=3, temperature=1, system_prompt=""):
+def open_ai_ask_and_get_answer(vector_store, q, k=3, temperature=1, system_prompt="", model="gpt-4o"):
     print("Model is GPT")
     print('k ', k)
     print('temperature: ', temperature)
@@ -114,7 +114,7 @@ def open_ai_ask_and_get_answer(vector_store, q, k=3, temperature=1, system_promp
             ("human", "{input}"),
         ]
     )
-    llm = ChatOpenAI(model='gpt-4o', temperature=temperature)
+    llm = ChatOpenAI(model=model, temperature=temperature)
 
     retriever = vector_store.as_retriever(search_type='similarity', search_kwargs={'k': k})
     question_answer_chain = create_stuff_documents_chain(llm, prompt)
@@ -265,9 +265,9 @@ if choice == 'Vector RAG':
 
         st.title("Step 3: Configure and Process Files")
 
-        model_option = st.selectbox("Select a model:", ["GPT-4O", "gemini-1.5-flash-8b", "PaperQA"])
+        model_option = st.selectbox("Select a model:", ["GPT-4O", "gemini-1.5-flash-8b", "GPT-3.5-turbo"])
         st.session_state['model'] = model_option
-        if model_option == "GPT-4O":
+        if model_option == "GPT-4O" or model_option == "GPT-3.5-turbo":
             api_key = st_keyup("OpenAI API Key: ", key='311', debounce=500)
             if api_key:
                 os.environ['OPENAI_API_KEY'] = api_key
@@ -326,7 +326,7 @@ if choice == 'Vector RAG':
 
                             tokens, embedding_cost = calculate_embedding_cost(chunks)
 
-                            if st.session_state['model'] == "GPT-4O":
+                            if st.session_state['model'] == "GPT-4O" or st.session_state['model'] == "GPT-3.5-turbo":
                                 st.session_state["processed_files"].append({
                                     "name": uploaded_file.name,
                                     "chunks": chunks,
@@ -350,7 +350,7 @@ if choice == 'Vector RAG':
             st.write("Processed Files:")
 
             for processed_file in st.session_state["processed_files"]:
-                if st.session_state['model'] == "GPT-4O":
+                if st.session_state['model'] == "GPT-4O" or st.session_state['model'] == "GPT-3.5-turbo":
                     st.write(
                         f"File: {processed_file['name']}, Tokens: {processed_file['tokens']}, Cost: ${processed_file['embedding_cost']:.4f}")
                 else:
@@ -405,13 +405,14 @@ if choice == 'Vector RAG':
                         st.write(f"Processing question {i + 1} of {len(questions)}: {question}")
                         for file_name, vector_store in vector_store_map.items():
                             try:
-                                if st.session_state['model'] == "GPT-4O":
+                                if st.session_state['model'] == "GPT-4O" or st.session_state['model'] == "GPT-3.5-turbo":
                                     answer = open_ai_ask_and_get_answer(
                                         vector_store,
                                         question,
                                         k=st.session_state.k,
                                         temperature=st.session_state.temperature,
-                                        system_prompt=st.session_state.system_prompt
+                                        system_prompt=st.session_state.system_prompt,
+                                        model=st.session_state['model']
                                     )
                                 elif st.session_state['model'] == "gemini-1.5-flash-8b":
                                     answer = retry_gemini_call(
