@@ -122,6 +122,8 @@ class UIHelper:
     
     @staticmethod
     def is_processing(processing_key):
+        print('processing_key*******8', st.session_state)
+        print(st.session_state.get(processing_key, False))
         """Check if processing is in progress."""
         return st.session_state.get(processing_key, False)
     
@@ -470,8 +472,9 @@ class ChatWithDocumentsApp:
             st.markdown('<div class="button-container">', unsafe_allow_html=True)
             proceed_button = st.button(
                 "Proceed to Next Step ➡️", 
-                disabled=len(uploaded_files) == 0 or UIHelper.is_processing(self.upload_processing_key),
-                type="primary"
+                disabled=len(uploaded_files) == 0 or st.session_state.get("proceed_button", False),
+                type="primary",
+                key="proceed_button"
             )
             st.markdown('</div>', unsafe_allow_html=True)
             
@@ -503,7 +506,7 @@ class ChatWithDocumentsApp:
     def _handle_upload_excel_step(self):
         """Handle the Excel upload step."""
         with st.container():
-            st.markdown('<div class="step-container">', unsafe_allow_html=True)
+            # st.markdown('<div class="step-container">', unsafe_allow_html=True)
             st.subheader("Upload Excel File")
             st.markdown("Upload an Excel file containing questions to ask about the documents.")
             
@@ -581,7 +584,7 @@ class ChatWithDocumentsApp:
     def _handle_configure_step(self):
         """Handle the configuration step."""
         with st.container():
-            st.markdown('<div class="step-container">', unsafe_allow_html=True)
+            # st.markdown('<div class="step-container">', unsafe_allow_html=True)
             st.subheader("Configure Processing")
             st.markdown("Configure the AI model and processing parameters.")
             
@@ -677,8 +680,9 @@ class ChatWithDocumentsApp:
             with col1:
                 process_button = st.button(
                     "Process Files", 
-                    disabled=not api_key or UIHelper.is_processing(self.config_processing_key),
-                    type="primary"
+                    disabled=not api_key or st.session_state.get("process_config_button", False),
+                    type="primary",
+                    key="process_config_button"
                 )
             with col2:
                 next_button = st.button(
@@ -787,15 +791,15 @@ class ChatWithDocumentsApp:
     def _handle_answer_questions_step(self):
         """Handle the question answering step."""
         with st.container():
-            st.markdown('<div class="step-container">', unsafe_allow_html=True)
+            # st.markdown('<div class="step-container">', unsafe_allow_html=True)
             st.subheader("Answer Questions and Export Results")
             
             # Add a back button
-            col1, col2 = st.columns([1, 11])
-            with col1:
-                if st.button("⬅️ Back", key="back_to_config"):
-                    st.session_state["step"] = Step.CONFIGURE
-                    st.rerun()
+            # col1, col2 = st.columns([1, 11])
+            # with col1:
+            #     if st.button("⬅️ Back", key="back_to_config"):
+            #         st.session_state["step"] = Step.CONFIGURE
+            #         st.rerun()
             
             # Check if questions and processed files are available
             if not st.session_state.get("processed_files"):
