@@ -28,14 +28,66 @@ from langchain_openai import OpenAIEmbeddings
 from st_keyup import st_keyup
 
 # Constants
-DEFAULT_SYSTEM_PROMPT = """Use the given context to answer the question.
-If you don't know the answer, say you don't know.
-Use three sentence maximum and keep the answer concise.
-Always start your answer with the name of company and then the rest."""
+DEFAULT_SYSTEM_PROMPT = """
+You are an expert automated analyst designed to systematically extract and interpret sustainability and human rights information from corporate sustainability reports. Your primary function is to analyze provided texts (sustainability reports) and respond accurately and concisely to a set of predefined questions, focusing explicitly on assessing aspects of sustainability, human rights maturity, policy commitments, GRI Standards adherence, and relevant international guidelines mentioned.
+
+When analyzing reports, adhere strictly to these rules:
+
+1. Direction and Persona:
+- Operate as a meticulous, data-driven analyst trained in sustainability reporting, international human rights standards, corporate responsibility frameworks (e.g., GRI Standards, OECD Guidelines, UN Global Compact, ISO protocols), and assessment methodologies.
+- Only answer based on information explicitly present in the sustainability report provided. Do NOT infer or assume responses if explicit statements or evidence are not available.
+- When answering, clearly state “Yes” or “No”, briefly cite relevant sentences (verbatim excerpts are preferred) from the report as evidence, and indicate the report page or section if available. If explicitly requested information is not present, respond clearly with: "Information not explicitly disclosed."
+
+2. Response Format:
+Use the following structured response format for each question separately:
+
+Question: {{question}}
+Answer: Yes/No/Information not explicitly disclosed
+Evidence: "{{exact sentence or passage from report text}}"
+Location: {{page number or section of report document; write "not specified" if unavailable}}
+
+3. Robustness for Varied Questions:
+- You will be provided questions that concern specific human rights practices, due diligence processes, stakeholder involvement, adherence to GRI criteria, UN standards, OECD Guidelines, and other standards. Questions may include but are not limited to explicit mentions of policies, processes, certifications, trainings, governance, reporting standards adherence, and international initiatives (e.g., UNGC, OECD, ISO standards, SA8000, Bloomberg GEI, Valore D, Ethical Trading Initiative, BSCI Amfori, FLA, Principles for Responsible Investment, Human Rights Indicators for Business, Universal Declaration of Human Rights, etc.)
+
+- Be particularly attentive to precise wording, standards codes (GRI 414.1, GRI 414.2, 202.1, 405.1, 405.2, etc.), and listed alternative keywords (e.g., discrimination, child labor, gender equality, forced labor, etc.) and always carefully check for explicitly matching terms or codes in the provided report text.
+
+4. Handling Ambiguities:
+- Answer "Yes" only if there is explicit clarity in the sustainability report that the question's criteria are explicitly met (e.g., explicit mention of adherence, certification, practices, or standards).
+- Short, unclear, indirect, or vague references without explicit compliance statements must result in "Information not explicitly disclosed."
+
+Examples (illustrative):
+
+EXAMPLE 1:
+Question: Does the company have SA 8000 certification?
+Answer: Yes
+Evidence: "Our factories have received SA 8000 certification, demonstrating a commitment to socially acceptable practices in our facilities."
+Location: Page 23, Section "Certifications & Commitments."
+
+EXAMPLE 2:
+Question: Does the company consider material under GRI the Topic 405.2: Ratio of basic salary and remuneration of women to men?
+Answer: Information not explicitly disclosed
+Evidence: "We analyzed gender ratios at various job levels."
+Location: Page 44, Section "Diversity and Inclusion."
+
+EXAMPLE 3:
+Question: Does the company have a human rights due diligence (internal and external) process that involves potentially impacted stakeholders?
+Answer: Yes
+Evidence: "We maintain an ongoing due diligence process, including consultation sessions with potentially affected stakeholders and community representatives, both internally and externally."
+Location: Page 17, Section "Human Rights Management Approach."
+
+Your goal is to reliably capture explicit evidence to objectively support numeric scoring in corporate sustainability evaluations related to sustainability and human rights maturity indexes.
+
+Now, evaluate the provided sustainability report and answer the following:
+
+Question: {{question}}
+Answer:
+Evidence:
+Location:
+"""
 
 DEFAULT_CHUNK_SIZE = 512
 DEFAULT_CHUNK_OVERLAP = 20
-DEFAULT_TEMPERATURE = 1.0
+DEFAULT_TEMPERATURE = 0.2
 DEFAULT_K = 3
 VECTOR_STORE_PATH = Path('vectorestore/faiss')
 UPLOAD_DIR = Path('./uploaded_files')
@@ -94,8 +146,15 @@ class UIHelper:
     def show_loading(container, message="Processing..."):
         """Show a loading spinner with a message."""
         with container:
-            with st.spinner(message):
-                st.info(message)
+            st.markdown(
+                f"""
+                <div class="custom-spinner">
+                    <div class="spinner"></div>
+                    <div class="message">{message}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
     
     @staticmethod
     def clear_loading(container):
@@ -122,9 +181,7 @@ class UIHelper:
     
     @staticmethod
     def is_processing(processing_key):
-        print('processing_key*******8', st.session_state)
-        print(st.session_state.get(processing_key, False))
-        """Check if processing is in progress."""
+        
         return st.session_state.get(processing_key, False)
     
     @staticmethod
@@ -194,7 +251,7 @@ class OpenAILLMStrategy(LLMStrategy):
     def ask_and_get_answer(self, vector_store: FAISS, question: str, config: AppConfig) -> Any:
         from langchain.chat_models import ChatOpenAI
 
-        _system_prompt = f"{config.system_prompt} Context: {{context}}"
+        _system_prompt = f"{config.system_prompt} context: {{context}}"
         prompt = ChatPromptTemplate.from_messages([
             ("system", _system_prompt),
             ("human", "{input}"),
@@ -212,7 +269,7 @@ class GeminiLLMStrategy(LLMStrategy):
     def ask_and_get_answer(self, vector_store: FAISS, question: str, config: AppConfig) -> Any:
         from langchain_google_genai import ChatGoogleGenerativeAI
 
-        _system_prompt = f"{config.system_prompt} Context: {{context}}"
+        _system_prompt = f"{config.system_prompt} context: {{context}}"
         prompt = ChatPromptTemplate.from_messages([
             ("system", _system_prompt),
             ("human", "{input}"),
@@ -342,6 +399,7 @@ class LLMService:
         
         while retries < max_retries:
             answer = strategy.ask_and_get_answer(vector_store, question, config)
+            print('gemini log', answer)
             if answer is not None:
                 return answer
                 
@@ -395,8 +453,8 @@ class ChatWithDocumentsApp:
         st.markdown("""
         <style>
         .app-header {
-            background: linear-gradient(135deg, #00416A 0%, #E4E5E6 50%, #00416A 100%);
-            color: #00416A;
+            background: linear-gradient(135deg, #2E8B57 0%, #98FB98 50%, #2E8B57 100%);
+            color: #006400;
             padding: 1.5rem;
             border-radius: 0.5rem;
             margin-bottom: 1rem;
@@ -417,14 +475,14 @@ class ChatWithDocumentsApp:
         }
         </style>
         <div class="app-header">
-            <h1>Chat with Documents</h1>
-            <p>Upload documents, process them, and ask questions using AI models</p>
+            <h3>Sustainability Report Analyzer: Automated Assessment of Corporate Environmental & Social Performance</h1>
+            <p>Leverage AI to systematically analyze sustainability reports, extract key metrics, and generate standardized evaluations of corporate sustainability and human rights practices</p>
         </div>
         """, unsafe_allow_html=True)
         
         # Display the current step as a progress indicator
         current_step = st.session_state["step"]
-        steps = ["Upload Files", "Upload Excel", "Configure", "Answer Questions"]
+        steps = ["1. Upload Files", "2. Upload Excel", "3. Configure", "4. Answer Questions"]
         
         cols = st.columns(len(steps))
         for i, step_name in enumerate(steps):
@@ -563,8 +621,9 @@ class ChatWithDocumentsApp:
             st.markdown('<div class="button-container">', unsafe_allow_html=True)
             proceed_button = st.button(
                 "Proceed to Next Step ➡️", 
-                disabled=not bool(excel_file) or UIHelper.is_processing(self.excel_processing_key),
-                type="primary"
+                disabled=not bool(excel_file) or st.session_state.get("proceed_button2", False),
+                type="primary",
+                key="proceed_button2"
             )
             st.markdown('</div>', unsafe_allow_html=True)
             
@@ -676,7 +735,7 @@ class ChatWithDocumentsApp:
             processing_status_container = UIHelper.create_loading_container()
             
             # Process and Next buttons
-            col1, col2 = st.columns([5, 5])
+            col1, col2 = st.columns([9.9, 2.1])
             with col1:
                 process_button = st.button(
                     "Process Files", 
@@ -818,10 +877,13 @@ class ChatWithDocumentsApp:
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Questions", len(questions))
+                st.metric("Chunk Size", config.chunk_size)
             with col2:
                 st.metric("Documents", len(processed_files))
+                st.metric("Chunk Overlap", config.chunk_overlap)
             with col3:
                 st.metric("Model", config.model)
+                st.metric("Temperature", config.temperature)
             
             # Create a loading container for answering status
             answering_status_container = UIHelper.create_loading_container()
@@ -832,12 +894,13 @@ class ChatWithDocumentsApp:
                     st.write(f"{i+1}. {question}")
             
             # Answer and Export buttons
-            col1, col2 = st.columns(2)
+            col1, col2 = st.columns([9.5, 2.5])
             with col1:
                 answer_button = st.button(
                     "Answer Questions", 
-                    disabled=UIHelper.is_processing(self.qa_processing_key),
-                    type="primary"
+                    disabled=st.session_state.get("answer_button", False),
+                    type="primary",
+                    key="answer_button"
                 )
             with col2:
                 export_button = st.button(
@@ -910,7 +973,7 @@ class ChatWithDocumentsApp:
                                     results.append(QuestionAnswer(
                                         question=question,
                                         file_name=file_name,
-                                        answer=answer
+                                        answer=answer['answer']
                                     ))
                                     
                                     UIHelper.update_progress(qa_progress, qa_value_key, qa_total_key)
@@ -920,7 +983,7 @@ class ChatWithDocumentsApp:
                                     results.append(QuestionAnswer(
                                         question=question,
                                         file_name=file_name,
-                                        answer=f"Error generating answer"
+                                        answer=f"Error generating answer {e}"
                                     ))
                                     UIHelper.update_progress(qa_progress, qa_value_key, qa_total_key)
                             
@@ -954,7 +1017,7 @@ class ChatWithDocumentsApp:
                         for file_name, answer in answers:
                             with st.container():
                                 st.markdown(f"*Document: {file_name}*")
-                                st.markdown(f"{answer}")
+                                st.markdown(f"<pre>{answer}</pre>", unsafe_allow_html=True)
                             st.markdown("---")
             
             # Export results

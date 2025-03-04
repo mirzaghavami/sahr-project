@@ -2,3 +2,8 @@
 /.env
 /.venv/
 /uploaded_files/
+/results/
+/excel_file_as_csv.csv
+vectorestore/faiss/index.pkl
+vectorestore/faiss/index.faiss
+results/questions_answers.xlsx
