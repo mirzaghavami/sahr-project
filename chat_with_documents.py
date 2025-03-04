@@ -28,8 +28,7 @@ from langchain_openai import OpenAIEmbeddings
 from st_keyup import st_keyup
 
 # Constants
-DEFAULT_SYSTEM_PROMPT = """
-You are an expert automated analyst designed to systematically extract and interpret sustainability and human rights information from corporate sustainability reports. Your primary function is to analyze provided texts (sustainability reports) and respond accurately and concisely to a set of predefined questions, focusing explicitly on assessing aspects of sustainability, human rights maturity, policy commitments, GRI Standards adherence, and relevant international guidelines mentioned.
+DEFAULT_SYSTEM_PROMPT = """You are an expert automated analyst designed to systematically extract and interpret sustainability and human rights information from corporate sustainability reports. Your primary function is to analyze provided texts (sustainability reports) and respond accurately and concisely to a set of predefined questions, focusing explicitly on assessing aspects of sustainability, human rights maturity, policy commitments, GRI Standards adherence, and relevant international guidelines mentioned.
 
 When analyzing reports, adhere strictly to these rules:
 
