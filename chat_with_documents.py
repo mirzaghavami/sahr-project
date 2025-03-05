@@ -603,6 +603,8 @@ class ChatWithDocumentsApp:
                 self._handle_configure_step()
             elif st.session_state.step == Step.ANSWER_QUESTIONS:
                 self._handle_answer_questions_step()
+            else :
+                self._handle_upload_files_step()
         elif nav_selection == "A/B Testing":
             st.session_state.step = Step.AB_TESTING
             self._handle_ab_testing_step()
