@@ -1,5 +1,5 @@
 """
-Chat with Documents Application
+Q/A with Documents Application
 
 A Streamlit application that allows users to upload documents, process them,
 and ask questions using various LLM models.
@@ -7,6 +7,7 @@ and ask questions using various LLM models.
 
 import os
 import time
+from datetime import datetime
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -35,7 +36,7 @@ When analyzing reports, adhere strictly to these rules:
 1. Direction and Persona:
 - Operate as a meticulous, data-driven analyst trained in sustainability reporting, international human rights standards, corporate responsibility frameworks (e.g., GRI Standards, OECD Guidelines, UN Global Compact, ISO protocols), and assessment methodologies.
 - Only answer based on information explicitly present in the sustainability report provided. Do NOT infer or assume responses if explicit statements or evidence are not available.
-- When answering, clearly state “Yes” or “No”, briefly cite relevant sentences (verbatim excerpts are preferred) from the report as evidence, and indicate the report page or section if available. If explicitly requested information is not present, respond clearly with: "Information not explicitly disclosed."
+- When answering, clearly state "Yes" or "No", briefly cite relevant sentences (verbatim excerpts are preferred) from the report as evidence, and indicate the report page or section if available. If explicitly requested information is not present, respond clearly with: "Information not explicitly disclosed."
 
 2. Response Format:
 Use the following structured response format for each question separately:
@@ -105,6 +106,7 @@ class Step(int, Enum):
     UPLOAD_EXCEL = 2
     CONFIGURE = 3
     ANSWER_QUESTIONS = 4
+    AB_TESTING = 5
 
 
 # Data classes for better structure
@@ -132,6 +134,14 @@ class QuestionAnswer:
     file_name: str
     answer: Any
 
+
+@dataclass
+class ABTestData:
+    variant: str  # "A" or "B"
+    prompt: str   # The question that was asked
+    file_name: str  # The file name that was used
+    response: str  # The response generated
+    feedback: Optional[int] = None  # 1 for thumbs up, 0 for thumbs down
 
 
 # Add a new UI helper class after the LLMService class
@@ -367,19 +377,77 @@ class FileService:
         except Exception as e:
             st.error(f"Error reading Excel file: {e}")
             return pd.DataFrame()
+        
+    @staticmethod
+    def read_ab_testing_excel(uploaded_file) -> pd.DataFrame:
+        """Read and process an Excel file."""
+        cols = [
+            'Question', 'File', 'Answer'
+        ]
+        try:
+            framework = pd.read_excel(uploaded_file, sheet_name='Sheet1', usecols=cols).fillna(method='ffill')
+            return framework
+        except Exception as e:
+            st.error(f"Error reading Excel file: {e}")
+            return pd.DataFrame()
 
     @staticmethod
-    def export_results(results: List[QuestionAnswer], filename: str = "questions_answers.xlsx") -> str:
-        """Export results to an Excel file."""
-        RESULTS_DIR.mkdir(exist_ok=True, parents=True)
-        file_path = RESULTS_DIR / filename
+    def export_results(results: List[QuestionAnswer], filename: str = "questions_answers.xlsx", metadata: dict = None) -> str:
+        """Export the results to an Excel file."""
+        results_dir = RESULTS_DIR
+        results_dir.mkdir(exist_ok=True)
         
-        df = pd.DataFrame([
-            {"Question": qa.question, "File": qa.file_name, "Answer": qa.answer}
-            for qa in results
-        ])
+        # Convert results to a DataFrame
+        data = [{"Question": qa.question, "File": qa.file_name, "Answer": qa.answer} for qa in results]
+        df = pd.DataFrame(data)
         
-        df.to_excel(file_path, index=False)
+        # Save to Excel with metadata in a separate sheet if available
+        file_path = results_dir / filename
+        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Sheet1', index=False)
+            
+            # Export metadata to Sheet2 if available
+            if metadata:
+                metadata_df = pd.DataFrame(list(metadata.items()), columns=['Parameter', 'Value'])
+                metadata_df.to_excel(writer, sheet_name='Sheet2', index=False)
+        
+        return str(file_path)
+        
+    @staticmethod
+    def export_ab_test_results(results: List[ABTestData], filename: str = "ab_test_results.xlsx") -> str:
+        """Export the A/B testing results to an Excel file."""
+        results_dir = RESULTS_DIR
+        results_dir.mkdir(exist_ok=True)
+        
+        # Convert results to a DataFrame
+        df = pd.DataFrame([{
+            "Variant": data.variant,
+            "Question": data.prompt,
+            "Answer": data.response,
+            "Feedback": data.feedback
+        } for data in results])
+        
+        # Create a summary DataFrame
+        if not df.empty and 'Feedback' in df.columns and df['Feedback'].notna().any():
+            summary_df = (
+                df.groupby("Variant")
+                .agg(
+                    count=("Feedback", "count"),
+                    score=("Feedback", "mean")
+                )
+                .reset_index()
+            )
+            
+            # Save both DataFrames to different sheets in the same Excel file
+            file_path = results_dir / filename
+            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Detailed Results', index=False)
+                summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        else:
+            # If no feedback data, just save the main DataFrame
+            file_path = results_dir / filename
+            df.to_excel(file_path, index=False)
+        
         return str(file_path)
 
 
@@ -425,26 +493,49 @@ class ChatWithDocumentsApp:
         self.export_processing_key = UIHelper.disable_buttons_during_processing("export")
 
     def _initialize_session_state(self):
-        """Initialize session state variables."""
-        if "step" not in st.session_state:
-            st.session_state["step"] = Step.UPLOAD_FILES
+        """Initialize the session state variables."""
+        if 'step' not in st.session_state:
+            st.session_state.step = Step.UPLOAD_FILES
         
-        if "processed_files" not in st.session_state:
-            st.session_state["processed_files"] = []
-            
-        if "questions" not in st.session_state:
-            st.session_state['questions'] = []
-            
-        if "completed" not in st.session_state:
-            st.session_state["completed"] = False
-            
-        if "results" not in st.session_state:
-            st.session_state["results"] = []
+        if 'processed_files' not in st.session_state:
+            st.session_state.processed_files = []
+        
+        if 'vector_store' not in st.session_state:
+            st.session_state.vector_store = None
+        
+        if 'questions' not in st.session_state:
+            st.session_state.questions = []
+        
+        if 'config' not in st.session_state:
+            st.session_state.config = AppConfig(
+                model=ModelType.GPT_35_TURBO,
+                system_prompt=DEFAULT_SYSTEM_PROMPT,
+                chunk_size=DEFAULT_CHUNK_SIZE,
+                chunk_overlap=DEFAULT_CHUNK_OVERLAP,
+                temperature=DEFAULT_TEMPERATURE,
+                k=DEFAULT_K
+            )
+        
+        if 'answers' not in st.session_state:
+            st.session_state.answers = []
+        
+        # Initialize A/B testing related state
+        if 'ab_test_data' not in st.session_state:
+            st.session_state.ab_test_data = []
+        
+        if 'ab_test_excel_files' not in st.session_state:
+            st.session_state.ab_test_excel_files = {'A': None, 'B': None}
+        
+        if 'ab_test_responses' not in st.session_state:
+            st.session_state.ab_test_responses = []
+        
+        if 'ab_test_current_index' not in st.session_state:
+            st.session_state.ab_test_current_index = 0
+        
+        if 'ab_test_completed' not in st.session_state:
+            st.session_state.ab_test_completed = False
 
-    def clear_history(self):
-        """Clear conversation history."""
-        if 'history' in st.session_state:
-            del st.session_state['history']
+    
 
     def run(self):
         """Run the application."""
@@ -492,18 +583,46 @@ class ChatWithDocumentsApp:
                     st.markdown(f"🔄 **{step_name}**")
                 else:
                     st.markdown(f"⏳ {step_name}")
+        # Display navigation
+        nav_selection = st.sidebar.radio(
+            "Navigation",
+            ["Home", "Q/A with Documents", "A/B Testing"],
+            index=0,
+        )
         
-        st.markdown("---")
+        if nav_selection == "Home":
+            st.session_state.step = Step.UPLOAD_FILES
+            self._show_home_page()
+        elif nav_selection == "Q/A with Documents":
+            # Show the appropriate step
+            if st.session_state.step == Step.UPLOAD_FILES:
+                self._handle_upload_files_step()
+            elif st.session_state.step == Step.UPLOAD_EXCEL:
+                self._handle_upload_excel_step()
+            elif st.session_state.step == Step.CONFIGURE:
+                self._handle_configure_step()
+            elif st.session_state.step == Step.ANSWER_QUESTIONS:
+                self._handle_answer_questions_step()
+        elif nav_selection == "A/B Testing":
+            st.session_state.step = Step.AB_TESTING
+            self._handle_ab_testing_step()
+
+    def _show_home_page(self):
+        """Show the home page."""
+        st.markdown("""
+        # Welcome to Q/A with Documents
         
-        # Run the appropriate step
-        if current_step == Step.UPLOAD_FILES:
-            self._handle_upload_files_step()
-        elif current_step == Step.UPLOAD_EXCEL:
-            self._handle_upload_excel_step()
-        elif current_step == Step.CONFIGURE:
-            self._handle_configure_step()
-        elif current_step == Step.ANSWER_QUESTIONS:
-            self._handle_answer_questions_step()
+        This application allows you to Q/A with your documents using OpenAI language models.
+        
+        ## Features:
+        - Upload PDF, DOCX, and TXT files
+        - Break documents into smaller chunks for efficient processing
+        - Configure system prompt, chunk size, and other parameters
+        - Ask questions about your documents
+        - Compare different system prompts with A/B testing
+        
+        Get started by navigating to "Q/A with Documents" or "A/B Testing" in the sidebar.
+        """)
 
     def _handle_upload_files_step(self):
         """Handle the file upload step."""
@@ -691,8 +810,7 @@ class ChatWithDocumentsApp:
                     min_value=100, 
                     max_value=2200, 
                     value=DEFAULT_CHUNK_SIZE,
-                    help="Size of text chunks in characters. Smaller chunks may improve accuracy but increase processing time.",
-                    on_change=self.clear_history
+                    help="Size of text chunks in characters. Smaller chunks may improve accuracy but increase processing time."
                 )
                 
                 chunk_overlap = st.number_input(
@@ -700,8 +818,7 @@ class ChatWithDocumentsApp:
                     min_value=0, 
                     max_value=100, 
                     value=DEFAULT_CHUNK_OVERLAP,
-                    help="Percentage of overlap between chunks to maintain context across chunk boundaries.",
-                    on_change=self.clear_history
+                    help="Percentage of overlap between chunks to maintain context across chunk boundaries."
                 )
             
             with advanced_tab:
@@ -726,8 +843,7 @@ class ChatWithDocumentsApp:
                     min_value=1, 
                     max_value=20, 
                     value=DEFAULT_K, 
-                    help="Number of most relevant chunks to retrieve for each question.",
-                    on_change=self.clear_history
+                    help="Number of most relevant chunks to retrieve for each question."
                 )
             
             # Create a loading container for processing status
@@ -955,13 +1071,13 @@ class ChatWithDocumentsApp:
                         results = []
                         llm_strategy = StrategyFactory.get_llm_strategy(config.model)
                         
-                        for i, question in enumerate(questions):
-                            qa_status = st.empty()
-                            qa_status.info(f"Processing question {i+1}/{len(questions)}: {question}")
+                        for file_name, vector_store in vector_store_map.items():
+                            file_status = st.empty()
+                            file_status.info(f"Processing document: {file_name}")
                             
-                            for file_name, vector_store in vector_store_map.items():
-                                file_qa_status = st.empty()
-                                file_qa_status.info(f"Answering with document: {file_name}")
+                            for i, question in enumerate(questions):
+                                qa_status = st.empty()
+                                qa_status.info(f"Processing question {i+1}/{len(questions)} for {file_name}: {question}")
                                 
                                 try:
                                     if config.model == ModelType.GEMINI.value:
@@ -976,9 +1092,9 @@ class ChatWithDocumentsApp:
                                     ))
                                     
                                     UIHelper.update_progress(qa_progress, qa_value_key, qa_total_key)
-                                    file_qa_status.empty()
+                                    qa_status.success(f"Completed question {i+1}/{len(questions)} for {file_name}")
                                 except Exception as e:
-                                    file_qa_status.error(f"Error with {file_name}: {e}")
+                                    qa_status.error(f"Error with question for {file_name}: {e}")
                                     results.append(QuestionAnswer(
                                         question=question,
                                         file_name=file_name,
@@ -986,7 +1102,7 @@ class ChatWithDocumentsApp:
                                     ))
                                     UIHelper.update_progress(qa_progress, qa_value_key, qa_total_key)
                             
-                            qa_status.success(f"Completed question {i+1}/{len(questions)}")
+                            file_status.success(f"Completed all questions for document: {file_name}")
                         
                         st.session_state["results"] = results
                         st.success("All questions answered successfully!")
@@ -1023,11 +1139,21 @@ class ChatWithDocumentsApp:
             if export_button and st.session_state.get("results"):
                 UIHelper.start_processing(self.export_processing_key)
                 export_status = UIHelper.create_loading_container()
-                
+                config = st.session_state.get('config', AppConfig(model=st.session_state['model']))
                 try:
                     with export_status:
                         with st.spinner("Exporting results to Excel..."):
-                            results_file = FileService.export_results(st.session_state["results"])
+                            # Get metadata for export
+                            metadata = {
+                                "Model": config.model,
+                                "System Prompt": config.system_prompt,
+                                "Chunk Size": config.chunk_size,
+                                "Chunk Overlap": config.chunk_overlap,
+                                "Temperature": config.temperature,
+                                "K":config.k,
+                                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            }
+                            results_file = FileService.export_results(st.session_state["results"], metadata=metadata)
                             st.success(f"Results exported successfully to {results_file}!")
                     
                     results_file_path = RESULTS_DIR / "questions_answers.xlsx"
@@ -1048,6 +1174,228 @@ class ChatWithDocumentsApp:
                     UIHelper.end_processing(self.export_processing_key)
             
             st.markdown('</div>', unsafe_allow_html=True)
+
+    def _handle_ab_testing_step(self):
+        """Handle the A/B testing step."""
+        st.title("A/B Testing for System Prompts")
+        
+        # Reset button
+        if st.sidebar.button("Reset A/B Testing"):
+            # Clear A/B testing state
+            st.session_state.ab_test_data = []
+            st.session_state.ab_test_excel_files = {'A': None, 'B': None}
+            st.session_state.ab_test_responses = []
+            st.session_state.ab_test_current_index = 0
+            st.session_state.ab_test_completed = False
+            st.rerun()
+        
+        # Information about expected file format
+        st.info("""
+        ## How to Use A/B Testing
+        
+        1. **Prepare two Excel files** with answers generated using different system prompts
+           - Each file should have at least 'Question' and 'Answer' columns
+           - You can use the files exported from the "Q/A with Documents" feature
+           
+        2. **Upload both files** below and click "Process Files"
+        
+        3. **Evaluate the responses** by giving thumbs up or down to each answer
+           - The responses are shuffled so you won't know which system prompt generated them
+           
+        4. **Compare the results** to see which system prompt performed better
+        """)
+        
+        # Step 1: Upload Excel files and set system prompts
+        st.header("Step 1: Upload Excel Files")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Variant A")
+            uploaded_file_a = st.file_uploader("Upload Excel File A (with Questions & Answers)", type=["xlsx", "xls"], key="file_uploader_a")
+            
+            if uploaded_file_a is not None:
+                st.session_state.ab_test_excel_files['A'] = uploaded_file_a
+                st.success(f"File uploaded: {uploaded_file_a.name}")
+        
+        with col2:
+            st.subheader("Variant B")
+            uploaded_file_b = st.file_uploader("Upload Excel File B (with Questions & Answers)", type=["xlsx", "xls"], key="file_uploader_b")
+            
+            if uploaded_file_b is not None:
+                st.session_state.ab_test_excel_files['B'] = uploaded_file_b
+                st.success(f"File uploaded: {uploaded_file_b.name}")
+        
+        # Step 2: Process files
+        st.header("Step 2: Process Files")
+        
+        if (st.session_state.ab_test_excel_files['A'] is not None and 
+            st.session_state.ab_test_excel_files['B'] is not None):
+            
+            if st.button("Process Files", key="process_files_button"):
+                with st.spinner("Processing files..."):
+                    # Process the Excel files
+                    self._process_ab_test_files()
+                    
+                    if len(st.session_state.ab_test_responses) > 0:
+                        st.success(f"Successfully processed {len(st.session_state.ab_test_responses)} responses!")
+                        st.session_state.ab_test_current_index = 0
+                        st.rerun()
+        else:
+            st.warning("Please upload both Excel files first.")
+        
+        # Step 3: Provide feedback
+        if len(st.session_state.ab_test_responses) > 0:
+            st.header("Step 3: Provide Feedback")
+            
+            current_index = st.session_state.ab_test_current_index
+            
+            if current_index < len(st.session_state.ab_test_responses):
+                response_data = st.session_state.ab_test_responses[current_index]
+                st.subheader("Question/Prompt")
+                st.info(f"File: {response_data.file_name}")
+                st.info(response_data.prompt)
+                
+                st.subheader("Response")
+                st.write(response_data.response)
+                
+                st.write(f"Response {current_index + 1} of {len(st.session_state.ab_test_responses)}")
+                
+                if st.button("👍 Thumbs Up", key="thumbs_up"):
+                    self._provide_feedback(current_index, 1)
+                if st.button("👎 Thumbs Down", key="thumbs_down"):
+                    self._provide_feedback(current_index, 0)
+            else:
+                st.success("A/B testing completed!")
+                st.session_state.ab_test_completed = True
+        
+        # Step 4: View results
+        if st.session_state.ab_test_completed:
+            st.header("Step 4: View Results")
+            
+            # Calculate summary statistics
+            if len(st.session_state.ab_test_data) > 0:
+                # Convert to DataFrame for analysis
+                df = pd.DataFrame([{
+                    "Variant": data.variant,
+                    "Prompt": data.prompt,
+                    "Response": data.response,
+                    "Feedback": data.feedback
+                } for data in st.session_state.ab_test_data])
+                
+                # Create summary DataFrame
+                summary_df = (
+                    df.groupby("Variant")
+                    .agg(
+                        count=("Feedback", "count"),
+                        score=("Feedback", "mean")
+                    )
+                    .reset_index()
+                )
+                
+                st.subheader("Summary Results")
+                st.dataframe(summary_df)
+                
+                # Create a bar chart to visualize the results
+                st.subheader("A/B Test Results")
+                st.bar_chart(summary_df.set_index("Variant")["score"])
+                # Export results option
+                if st.button("Export Results to Excel"):
+                    results_path = FileService.export_ab_test_results(st.session_state.ab_test_data)
+                    st.success(f"Results exported to {results_path}")
+                    
+                    # Add download button for the exported file
+                    results_file_path = Path(results_path)
+                    if results_file_path.exists():
+                        with open(results_file_path, "rb") as file:
+                            st.download_button(
+                                label="📥 Download Results",
+                                data=file,
+                                file_name="ab_test_results.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_ab_test_results"
+                            )
+            else:
+                st.warning("No feedback data available.")
+
+    def _process_ab_test_files(self):
+        """Process the uploaded Excel files for A/B testing."""
+        # Load both Excel files
+        file_a = st.session_state.ab_test_excel_files['A']
+        file_b = st.session_state.ab_test_excel_files['B']
+        
+        try:
+            df_a = FileService.read_ab_testing_excel(file_a)
+            df_b = FileService.read_ab_testing_excel(file_b)
+            
+            # Make sure both dataframes have 'Question' and 'Answer' columns (matching export format)
+            required_columns = ['Question', 'File', 'Answer']
+            
+            for variant, df in [('A', df_a), ('B', df_b)]:
+                # Convert column names to title case for consistency
+                df.columns = [col.title() if isinstance(col, str) else col for col in df.columns]
+                
+                missing_columns = [col for col in required_columns if col not in df.columns]
+                if missing_columns:
+                    st.error(f"Excel file {variant} is missing required columns: {', '.join(missing_columns)}. "
+                           f"The file should have columns named 'Question' and 'Answer' like the export format.")
+                    return
+            
+            # Clear existing responses
+            st.session_state.ab_test_responses = []
+            st.session_state.ab_test_data = []
+            
+            # Process answers from both files for A/B testing
+            for variant, df in [('A', df_a), ('B', df_b)]:
+                # Get rows with non-empty answers
+                valid_rows = df[df['Answer'].notna()]
+                
+                for _, row in valid_rows.iterrows():
+                    # Create test data using answers from the files
+                    test_data = ABTestData(
+                        variant=variant,
+                        prompt=row['Question'],  # This is the question that was asked
+                        file_name=row['File'],
+                        response=row['Answer']   # This is the answer we're evaluating
+                    )
+                    
+                    st.session_state.ab_test_responses.append(test_data)
+                    st.session_state.ab_test_data.append(test_data)
+            
+            # Shuffle the responses for blind testing
+            import random
+            random.shuffle(st.session_state.ab_test_responses)
+            
+            # If no valid responses were found
+            if not st.session_state.ab_test_responses:
+                st.error("No valid answers found in the uploaded Excel files. "
+                       "Make sure they contain 'Question' and 'Answer' columns with data.")
+            
+        except Exception as e:
+            st.error(f"Error processing Excel files: {str(e)}")
+
+    def _provide_feedback(self, index, feedback):
+        """Provide feedback (thumbs up/down) for a response."""
+        # Update the response in the responses list
+        st.session_state.ab_test_responses[index].feedback = feedback
+        
+        # Find the corresponding data in ab_test_data and update it
+        response_data = st.session_state.ab_test_responses[index]
+        for i, data in enumerate(st.session_state.ab_test_data):
+            if (data.variant == response_data.variant and 
+                data.prompt == response_data.prompt and 
+                data.response == response_data.response):
+                st.session_state.ab_test_data[i].feedback = feedback
+                break
+        
+        # Move to the next response
+        st.session_state.ab_test_current_index += 1
+        
+        # Check if we've reached the end
+        if st.session_state.ab_test_current_index >= len(st.session_state.ab_test_responses):
+            st.session_state.ab_test_completed = True
+        
+        st.rerun()
 
 
 # Main entry point
