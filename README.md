@@ -1,5 +1,7 @@
 # 📄 AI-Powered Sustainability Report Analyzer
 
+**🌐 Live Demo:** [sahr-project-unimi.streamlit.app](https://sahr-project-unimi.streamlit.app)
+
 ## 🌍 Introduction
 
 In recent years, the rise of corporate sustainability and human rights reporting has brought significant challenges in analyzing these documents consistently. Traditional methods, often manual and time-consuming, struggle to manage the complexity and diversity of these comprehensive reports—leading to inefficiencies and inconsistencies.
