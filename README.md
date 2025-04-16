@@ -1,6 +1,6 @@
 # 📄 AI-Powered Sustainability Report Analyzer
 
-**🌐 Live Demo:** [sahr-project-unimi.streamlit.app](https://sahr-project-unimi.streamlit.app)
+**🌐 Live Demo:** [SAHR-PROJECT](https://sahr-project-unimi.streamlit.app)
 
 ## 🌍 Introduction
 
