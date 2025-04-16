@@ -1,8 +1,73 @@
-##Introduction##
-In recent years, the rise of corporate sustainability and human rights reporting has brought challenges in analyzing these documents consistently. Traditional methods, which often rely on manual work, struggle to handle the complexity and variety of these heavy reports, leading to inefficiencies and inconsistencies. This thesis looks at a possible solution by using Prompt Engineering advanced principles with Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG) techniques to improve the analysis process.  The main goal of this research is to create a system that uses LLMs to process and review corporate sustainability reports. By applying advanced prompt engineering principles such as chain of thought (CoT), response format, the system aims to automatically find and analyze key information from different document formats, making the evaluation process more reliable and scalable.
-##Methodology##
-The developed system uses a Retrieval-Augmented Generation (RAG) method and follows a clear step-by-step process to analyze sustainability reports. First, users upload documents, usually in PDF, DOCX, TXT format. The system then breaks these documents into smaller parts known as chunks using a character-splitting method. This helps in keeping important information while making it easier to find relevant content. After splitting, these text sections are turned into vector embeddings using models from OpenAI and Google AI. These embeddings are stored in a vector database so the system can quickly find the most relevant sections when needed. To improve accuracy, the system picks out the most important text and structures prompts in a way that helps large language models (LLMs) give better answers. 
-The system provides a user interface (UI) to allow users adjust configurations and hyperparameters and also to upload documents and export spreadsheets files. Users can upload spreadsheet files containing structured sustainability prompts. After generating insights, the system allows exporting and downloading results. This makes it easier to organize information, track compliance, and compare different models, embedding methods, and settings. By supporting spreadsheets, the system improves usability and helps in reviewing how well it retrieves and generates responses.
-##Evaluation##
-To check how well the system works, different settings and performance measures were tested, including Semantic Similarity, Response Format Compliance, and Accuracy. Among the various models tested, Gemini-1.5-Flash-8B and GPT-4-Turbo gave the most stable results. The research also found that while models like Gemini-1.5-Flash-8B and GPT-4-Turbo performed well in most cases, factors like system prompts and chunking methods could affect their accuracy. This highlights the need to adjust settings based on the type of documents being processed. 
-In conclusion, this research shows that combining prompt engineering with LLMs can make sustainability report analysis faster and more consistent. However, there is still room for improvement. Future work could explore better ways to methods such as text splitting and add support for multiple languages to make the system more robust. Also, using automated evaluation methods could help make the results more objective and reliable. This system sets the stage for AI-driven analysis in corporate sustainability reporting, moving away from traditional manual processes toward a more automated and efficient approach.
+# 📄 AI-Powered Sustainability Report Analyzer
+
+## 🌍 Introduction
+
+In recent years, the rise of corporate sustainability and human rights reporting has brought significant challenges in analyzing these documents consistently. Traditional methods, often manual and time-consuming, struggle to manage the complexity and diversity of these comprehensive reports—leading to inefficiencies and inconsistencies.
+
+This thesis explores a solution using advanced **Prompt Engineering** techniques with **Large Language Models (LLMs)** and **Retrieval-Augmented Generation (RAG)** to streamline and improve the analysis process.
+
+The primary objective is to build a system that:
+- Utilizes LLMs to process and review corporate sustainability reports.
+- Applies advanced prompt engineering strategies such as **Chain-of-Thought (CoT)** and **response formatting**.
+- Automatically extracts and analyzes key information across different document formats.
+
+---
+
+## ⚙️ Methodology
+
+The system leverages a **Retrieval-Augmented Generation (RAG)** approach and follows a step-by-step pipeline:
+
+1. **Document Upload**  
+   Users upload sustainability reports in PDF, DOCX, or TXT format.
+
+2. **Chunking**  
+   The system splits documents into manageable **text chunks** using character-based methods—preserving context and improving relevance during retrieval.
+
+3. **Embedding Generation**  
+   Chunks are transformed into **vector embeddings** using models from **OpenAI** and **Google AI**.
+
+4. **Vector Store**  
+   These embeddings are stored in a **vector database** for fast, semantic search and retrieval.
+
+5. **Prompt Structuring**  
+   Prompts are carefully designed to extract useful insights, improving the quality of answers from LLMs.
+
+6. **User Interface (UI)**  
+   - Upload and manage documents  
+   - Configure model settings and hyperparameters  
+   - Import structured spreadsheet prompts  
+   - Export results as Excel files
+
+This user-friendly interface supports structured workflows, making it easier to track compliance, evaluate results, and compare across different LLMs and embedding techniques.
+
+---
+
+## ✅ Evaluation
+
+The system was evaluated on multiple performance dimensions, including:
+
+- **Semantic Similarity**
+- **Response Format Compliance**
+- **Accuracy**
+
+Key findings:
+- **Gemini-1.5-Flash-8B** and **GPT-4-Turbo** delivered the most consistent performance.
+- Prompt design, chunking strategies, and system instructions significantly influenced output quality.
+- Model performance can vary depending on document characteristics, making **adaptive configuration essential**.
+
+---
+
+## 🚀 Conclusion & Future Work
+
+This research demonstrates how LLMs and prompt engineering can automate and improve sustainability report analysis. Key benefits include:
+
+- Faster, more reliable evaluations
+- Scalable architecture for document processing
+- Structured outputs for auditing and comparison
+
+**Future improvements could include:**
+- Smarter chunking strategies
+- Multilingual support
+- Automated evaluation pipelines
+
+This project lays the foundation for **AI-driven, scalable, and objective analysis** in corporate sustainability reporting—moving away from manual processes toward an intelligent, efficient future.
