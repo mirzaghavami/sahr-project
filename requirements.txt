@@ -1,7 +1,7 @@
 openai
-langchain
+langchain==0.1.17
 langchain_openai
-langchain-community
+langchain-community==0.0.32
 docx2txt
 pypdf
 streamlit
